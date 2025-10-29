@@ -12,8 +12,13 @@ import (
 
 const (
 	// File and path constants.
-	testQtplFile = "test.qtpl"
-	testContent  = "test content"
+	testQtplFile  = "test.qtpl"
+	testContent   = "test content"
+	templatesDir  = "templates"
+	qtplExt       = ".qtpl"
+	templateExt   = ".template"
+	goExt         = ".go"
+	tempDirPrefix = "qtcwrap_test"
 
 	// Command argument constants.
 	dirTemplatesArg = "-dir=templates"
@@ -21,56 +26,135 @@ const (
 	skipCommentsArg = "-skipLineComments"
 
 	// Error message templates.
-	syntaxErrorMsg    = "syntax error in template"
-	createTempDirErr  = "Failed to create temp directory: %v"
-	removeTempDirErr  = "Failed to remove temp directory: %v"
-	createTempFileErr = "Failed to create temp file: %v"
+	syntaxErrorMsg                 = "syntax error in template"
+	createTempDirErr               = "Failed to create temp directory: %v"
+	removeTempDirErr               = "Failed to remove temp directory: %v"
+	createTempFileErr              = "Failed to create temp file: %v"
+	extensionMustStartWithDot      = "extension must start with a dot"
+	eitherFileOrDirMustBeSpecified = "either File or Dir must be specified"
+	createSpecificFileErr          = "Failed to create file %s: %v"
+	findTemplateFilesErr           = "Failed to find template files: %v"
+	closeWriterErr                 = "Failed to close writer: %v"
+	readFromPipeErr                = "Failed to read from pipe: %v"
+	changeDirPermsErr              = "Failed to change directory permissions: %v"
+	restoreDirPermsErr             = "Failed to restore directory permissions: %v"
+	fileNotAccessibleErr           = "file %s is not accessible"
+	dirNotAccessibleErr            = "directory %s is not accessible"
+	notDirErr                      = "is not a directory"
 )
 
+// Helper functions for test setup and assertions.
+
+// createTempTestDir creates a temporary directory for testing and returns its path.
+func createTempTestDir(t *testing.T) string {
+	tempDir, err := os.MkdirTemp("", tempDirPrefix)
+	if err != nil {
+		t.Fatalf(createTempDirErr, err)
+	}
+	return tempDir
+}
+
+// createTempTestFile creates a temporary file with the given content in the specified directory.
+func createTempTestFile(t *testing.T, dir, content string) string {
+	tempFile := filepath.Join(dir, testQtplFile)
+	err := os.WriteFile(tempFile, []byte(content), 0600)
+	if err != nil {
+		t.Fatalf(createTempFileErr, err)
+	}
+	return tempFile
+}
+
+// cleanupTempDir removes a temporary directory and handles error reporting.
+func cleanupTempDir(t *testing.T, dir string) {
+	if err := os.RemoveAll(dir); err != nil {
+		t.Fatalf(removeTempDirErr, err)
+	}
+}
+
+// assertConfigEquals validates that two Config structs are equal.
+func assertConfigEquals(t *testing.T, expected, actual Config, testName string) {
+	if expected.Dir != actual.Dir {
+		t.Errorf("%s: Expected Dir to be '%s', got '%s'", testName, expected.Dir, actual.Dir)
+	}
+	if expected.SkipLineComments != actual.SkipLineComments {
+		t.Errorf("%s: Expected SkipLineComments to be %t, got %t", testName, expected.SkipLineComments, actual.SkipLineComments)
+	}
+	if expected.Ext != actual.Ext {
+		t.Errorf("%s: Expected Ext to be '%s', got '%s'", testName, expected.Ext, actual.Ext)
+	}
+	if expected.File != actual.File {
+		t.Errorf("%s: Expected File to be '%s', got '%s'", testName, expected.File, actual.File)
+	}
+}
+
+// assertValidationError validates error conditions and messages.
+func assertValidationError(t *testing.T, err error, expectedMsg string, expectErr bool) {
+	if expectErr && err == nil {
+		t.Error("Expected error but got none")
+		return
+	}
+	if !expectErr && err != nil {
+		t.Errorf("Expected no error but got: %v", err)
+		return
+	}
+	if expectErr && expectedMsg != "" && !strings.Contains(err.Error(), expectedMsg) {
+		t.Errorf("Expected error message to contain '%s', got '%s'", expectedMsg, err.Error())
+	}
+}
+
+// assertArgsContain validates that expected argument is present in args slice.
+func assertArgsContain(t *testing.T, args []string, expected string) {
+	for _, arg := range args {
+		if arg == expected {
+			return
+		}
+	}
+	t.Errorf("Expected args to contain '%s', got %v", expected, args)
+}
+
 func TestConfig(t *testing.T) {
-	t.Run("DefaultConfig", func(t *testing.T) {
-		config := Config{
-			Dir:              ".",
-			SkipLineComments: true,
-			Ext:              "",
-			File:             "",
-		}
+	tests := []struct {
+		name     string
+		config   Config
+		expected Config
+	}{
+		{
+			name: "DefaultConfig",
+			config: Config{
+				Dir:              ".",
+				SkipLineComments: true,
+				Ext:              "",
+				File:             "",
+			},
+			expected: Config{
+				Dir:              ".",
+				SkipLineComments: true,
+				Ext:              "",
+				File:             "",
+			},
+		},
+		{
+			name: "CustomConfig",
+			config: Config{
+				Dir:              templatesDir,
+				SkipLineComments: false,
+				Ext:              qtplExt,
+				File:             testQtplFile,
+			},
+			expected: Config{
+				Dir:              templatesDir,
+				SkipLineComments: false,
+				Ext:              qtplExt,
+				File:             testQtplFile,
+			},
+		},
+	}
 
-		if config.Dir != "." {
-			t.Errorf("Expected Dir to be '.', got '%s'", config.Dir)
-		}
-		if !config.SkipLineComments {
-			t.Error("Expected SkipLineComments to be true")
-		}
-		if config.Ext != "" {
-			t.Errorf("Expected Ext to be empty, got '%s'", config.Ext)
-		}
-		if config.File != "" {
-			t.Errorf("Expected File to be empty, got '%s'", config.File)
-		}
-	})
-
-	t.Run("CustomConfig", func(t *testing.T) {
-		config := Config{
-			Dir:              "templates",
-			SkipLineComments: false,
-			Ext:              ".qtpl",
-			File:             testQtplFile,
-		}
-
-		if config.Dir != "templates" {
-			t.Errorf("Expected Dir to be 'templates', got '%s'", config.Dir)
-		}
-		if config.SkipLineComments {
-			t.Error("Expected SkipLineComments to be false")
-		}
-		if config.Ext != ".qtpl" {
-			t.Errorf("Expected Ext to be '.qtpl', got '%s'", config.Ext)
-		}
-		if config.File != testQtplFile {
-			t.Errorf("Expected File to be 'test.qtpl', got '%s'", config.File)
-		}
-	})
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assertConfigEquals(t, tt.expected, tt.config, tt.name)
+		})
+	}
 }
 
 func TestGetDefaultConfig(t *testing.T) {
@@ -146,8 +230,8 @@ func TestBuildArgs(t *testing.T) {
 			name: "FileMode",
 			config: Config{
 				File:             testQtplFile,
-				Dir:              "templates",
-				Ext:              ".qtpl",
+				Dir:              templatesDir,
+				Ext:              qtplExt,
 				SkipLineComments: false,
 			},
 			expected: []string{"-file=test.qtpl"},
@@ -155,8 +239,8 @@ func TestBuildArgs(t *testing.T) {
 		{
 			name: "DirectoryMode",
 			config: Config{
-				Dir:              "templates",
-				Ext:              ".qtpl",
+				Dir:              templatesDir,
+				Ext:              qtplExt,
 				SkipLineComments: false,
 				File:             "",
 			},
@@ -165,9 +249,9 @@ func TestBuildArgs(t *testing.T) {
 		{
 			name: "DirectoryModeWithExt",
 			config: Config{
-				Dir:              "templates",
+				Dir:              templatesDir,
 				SkipLineComments: false,
-				Ext:              ".qtpl",
+				Ext:              qtplExt,
 				File:             "",
 			},
 			expected: []string{dirTemplatesArg, extQtplArg},
@@ -175,9 +259,9 @@ func TestBuildArgs(t *testing.T) {
 		{
 			name: "DirectoryModeWithSkipComments",
 			config: Config{
-				Dir:              "templates",
+				Dir:              templatesDir,
 				SkipLineComments: true,
-				Ext:              ".qtpl",
+				Ext:              qtplExt,
 				File:             "",
 			},
 			expected: []string{dirTemplatesArg, extQtplArg, skipCommentsArg},
@@ -207,7 +291,7 @@ func TestBuildArgs(t *testing.T) {
 			config: Config{
 				Dir:              "",
 				SkipLineComments: false,
-				Ext:              ".template",
+				Ext:              templateExt,
 				File:             "",
 			},
 			expected: []string{"-ext=.template"},
@@ -318,30 +402,14 @@ func TestIsTemporaryFileWarning(t *testing.T) {
 	}
 }
 
-func TestValidateConfig(t *testing.T) {
-	// Create a temporary directory for testing
-	tempDir, err := os.MkdirTemp("", "qtcwrap_test")
-	if err != nil {
-		t.Fatalf(createTempDirErr, err)
-	}
-	defer func() {
-		if err := os.RemoveAll(tempDir); err != nil {
-			t.Fatalf(removeTempDirErr, err)
-		}
-	}()
-
-	// Create a temporary file for testing
-	tempFile := filepath.Join(tempDir, testQtplFile)
-	err = os.WriteFile(tempFile, []byte(testContent), 0600)
-	if err != nil {
-		t.Fatalf(createTempFileErr, err)
-	}
+func TestValidateConfigValidCases(t *testing.T) {
+	tempDir := createTempTestDir(t)
+	defer cleanupTempDir(t, tempDir)
+	tempFile := createTempTestFile(t, tempDir, testContent)
 
 	tests := []struct {
-		name      string
-		config    Config
-		expectErr bool
-		errorMsg  string
+		name   string
+		config Config
 	}{
 		{
 			name: "ValidFileConfig",
@@ -351,8 +419,6 @@ func TestValidateConfig(t *testing.T) {
 				Ext:              "",
 				File:             tempFile,
 			},
-			expectErr: false,
-			errorMsg:  "",
 		},
 		{
 			name: "ValidDirConfig",
@@ -362,85 +428,24 @@ func TestValidateConfig(t *testing.T) {
 				Ext:              "",
 				File:             "",
 			},
-			expectErr: false,
-			errorMsg:  "",
 		},
 		{
 			name: "ValidDirConfigWithExt",
 			config: Config{
 				Dir:              tempDir,
 				SkipLineComments: false,
-				Ext:              ".qtpl",
+				Ext:              qtplExt,
 				File:             "",
 			},
-			expectErr: false,
-			errorMsg:  "",
-		},
-		{
-			name: "InvalidFileConfig",
-			config: Config{
-				Dir:              "",
-				SkipLineComments: false,
-				Ext:              "",
-				File:             "/nonexistent/file.qtpl",
-			},
-			expectErr: true,
-			errorMsg:  "file /nonexistent/file.qtpl is not accessible",
-		},
-		{
-			name: "InvalidDirConfig",
-			config: Config{
-				Dir:              "/nonexistent/directory",
-				SkipLineComments: false,
-				Ext:              "",
-				File:             "",
-			},
-			expectErr: true,
-			errorMsg:  "directory /nonexistent/directory is not accessible",
-		},
-		{
-			name: "EmptyConfig",
-			config: Config{
-				Dir:              "",
-				SkipLineComments: false,
-				Ext:              "",
-				File:             "",
-			},
-			expectErr: true,
-			errorMsg:  "either File or Dir must be specified",
-		},
-		{
-			name: "DirIsActuallyFile",
-			config: Config{
-				Dir:              tempFile,
-				SkipLineComments: false,
-				Ext:              "",
-				File:             "",
-			},
-			expectErr: true,
-			errorMsg:  "is not a directory",
-		},
-		{
-			name: "InvalidExtension",
-			config: Config{
-				Dir:              tempDir,
-				SkipLineComments: false,
-				Ext:              "qtpl",
-				File:             "",
-			},
-			expectErr: true,
-			errorMsg:  "extension must start with a dot",
 		},
 		{
 			name: "ValidExtensionWithDot",
 			config: Config{
 				Dir:              tempDir,
 				SkipLineComments: false,
-				Ext:              ".qtpl",
+				Ext:              qtplExt,
 				File:             "",
 			},
-			expectErr: false,
-			errorMsg:  "",
 		},
 		{
 			name: "ValidCurrentDir",
@@ -450,69 +455,45 @@ func TestValidateConfig(t *testing.T) {
 				Ext:              "",
 				File:             "",
 			},
-			expectErr: false,
-			errorMsg:  "",
 		},
 	}
 
-	for _, testT := range tests {
-		t.Run(testT.name, func(t *testing.T) {
-			err := ValidateConfig(testT.config)
-
-			if testT.expectErr {
-				if err == nil {
-					t.Error("Expected error but got none")
-				} else if testT.errorMsg != "" && !strings.Contains(err.Error(), testT.errorMsg) {
-					t.Errorf("Expected error to contain '%s', got '%s'", testT.errorMsg, err.Error())
-				}
-			} else {
-				if err != nil {
-					t.Errorf("Expected no error but got: %v", err)
-				}
-			}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assertValidationError(t, ValidateConfig(tt.config), "", false)
 		})
 	}
 }
 
-func TestCompileWithValidation(t *testing.T) {
-	// Create a temporary directory for testing
-	tempDir, err := os.MkdirTemp("", "qtcwrap_test")
-	if err != nil {
-		t.Fatalf(createTempDirErr, err)
-	}
-	defer func() {
-		if err := os.RemoveAll(tempDir); err != nil {
-			t.Fatalf(removeTempDirErr, err)
-		}
-	}()
+func TestValidateConfigInvalidCases(t *testing.T) {
+	tempDir := createTempTestDir(t)
+	defer cleanupTempDir(t, tempDir)
+	tempFile := createTempTestFile(t, tempDir, testContent)
 
 	tests := []struct {
-		name      string
-		config    Config
-		expectErr bool
-		errorMsg  string
+		name     string
+		config   Config
+		errorMsg string
 	}{
 		{
-			name: "ValidConfig",
+			name: "InvalidFileConfig",
 			config: Config{
-				Dir:              tempDir,
+				Dir:              "",
 				SkipLineComments: false,
 				Ext:              "",
-				File:             "",
+				File:             "/nonexistent/file.qtpl",
 			},
-			expectErr: false,
-			errorMsg:  "",
+			errorMsg: "file /nonexistent/file.qtpl is not accessible",
 		},
 		{
-			name: "InvalidConfig",
+			name: "InvalidDirConfig",
 			config: Config{
 				Dir:              "/nonexistent/directory",
 				SkipLineComments: false,
 				Ext:              "",
 				File:             "",
 			},
-			expectErr: true,
-			errorMsg:  "configuration validation failed",
+			errorMsg: "directory /nonexistent/directory is not accessible",
 		},
 		{
 			name: "EmptyConfig",
@@ -522,27 +503,139 @@ func TestCompileWithValidation(t *testing.T) {
 				Ext:              "",
 				File:             "",
 			},
-			expectErr: true,
-			errorMsg:  "either File or Dir must be specified",
+			errorMsg: eitherFileOrDirMustBeSpecified,
+		},
+		{
+			name: "DirIsActuallyFile",
+			config: Config{
+				Dir:              tempFile,
+				SkipLineComments: false,
+				Ext:              "",
+				File:             "",
+			},
+			errorMsg: notDirErr,
+		},
+		{
+			name: "InvalidExtension",
+			config: Config{
+				Dir:              tempDir,
+				SkipLineComments: false,
+				Ext:              "qtpl",
+				File:             "",
+			},
+			errorMsg: extensionMustStartWithDot,
 		},
 	}
 
-	for _, testT := range tests {
-		t.Run(testT.name, func(t *testing.T) {
-			err := CompileWithValidation(testT.config)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assertValidationError(t, ValidateConfig(tt.config), tt.errorMsg, true)
+		})
+	}
+}
 
-			if testT.expectErr {
-				if err == nil {
-					t.Error("Expected error but got none")
-				} else if testT.errorMsg != "" && !strings.Contains(err.Error(), testT.errorMsg) {
-					t.Errorf("Expected error to contain '%s', got '%s'", testT.errorMsg, err.Error())
-				}
-			} else {
-				// For valid configs, we might get a qtc tool error, which is acceptable
-				if err != nil && !strings.Contains(err.Error(), "qtc tool validation failed") {
-					t.Errorf("Expected no error or qtc tool error, got: %v", err)
-				}
+func TestValidateConfigEdgeCases(t *testing.T) {
+	// This function is kept for additional edge cases that might be added later
+	// Currently covers scenarios that don't fit in valid/invalid categories
+	t.Run("BackwardCompatibility", func(t *testing.T) {
+		// Ensure the original TestValidateConfig behavior is preserved
+		tempDir := createTempTestDir(t)
+		defer cleanupTempDir(t, tempDir)
+
+		config := Config{
+			Dir:              tempDir,
+			SkipLineComments: true,
+			Ext:              qtplExt,
+			File:             "",
+		}
+
+		err := ValidateConfig(config)
+		if err != nil {
+			t.Errorf("Expected valid config with skip comments, got error: %v", err)
+		}
+	})
+}
+
+func TestCompileWithValidationSuccess(t *testing.T) {
+	tempDir := createTempTestDir(t)
+	defer cleanupTempDir(t, tempDir)
+
+	tests := []struct {
+		name   string
+		config Config
+	}{
+		{
+			name: "ValidConfig",
+			config: Config{
+				Dir:              tempDir,
+				SkipLineComments: false,
+				Ext:              "",
+				File:             "",
+			},
+		},
+		{
+			name: "ValidConfigWithExtension",
+			config: Config{
+				Dir:              tempDir,
+				SkipLineComments: true,
+				Ext:              qtplExt,
+				File:             "",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := CompileWithValidation(tt.config)
+			// For valid configs, we might get a qtc tool error, which is acceptable
+			if err != nil && !strings.Contains(err.Error(), "qtc tool validation failed") {
+				t.Errorf("Expected no error or qtc tool error, got: %v", err)
 			}
+		})
+	}
+}
+
+func TestCompileWithValidationFailure(t *testing.T) {
+	tests := []struct {
+		name     string
+		config   Config
+		errorMsg string
+	}{
+		{
+			name: "InvalidConfig",
+			config: Config{
+				Dir:              "/nonexistent/directory",
+				SkipLineComments: false,
+				Ext:              "",
+				File:             "",
+			},
+			errorMsg: "configuration validation failed",
+		},
+		{
+			name: "EmptyConfig",
+			config: Config{
+				Dir:              "",
+				SkipLineComments: false,
+				Ext:              "",
+				File:             "",
+			},
+			errorMsg: eitherFileOrDirMustBeSpecified,
+		},
+		{
+			name: "InvalidExtension",
+			config: Config{
+				Dir:              ".",
+				SkipLineComments: false,
+				Ext:              "invalid",
+				File:             "",
+			},
+			errorMsg: extensionMustStartWithDot,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assertValidationError(t, CompileWithValidation(tt.config), tt.errorMsg, true)
 		})
 	}
 }
@@ -572,7 +665,7 @@ func TestFindTemplateFiles(t *testing.T) {
 		}
 		err = os.WriteFile(fullPath, []byte(testContent), 0600)
 		if err != nil {
-			t.Fatalf("Failed to create file %s: %v", fileName, err)
+			t.Fatalf(createSpecificFileErr, fileName, err)
 		}
 	}
 
@@ -581,15 +674,15 @@ func TestFindTemplateFiles(t *testing.T) {
 		ext         string
 		expectedLen int
 	}{
-		{"Find .qtpl files", ".qtpl", 3},
-		{"Find .template files", ".template", 1},
-		{"Find .go files", ".go", 1},
+		{"Find .qtpl files", qtplExt, 3},
+		{"Find .template files", templateExt, 1},
+		{"Find .go files", goExt, 1},
 	}
 	for _, testCase := range testCases {
 		t.Run(testCase.description, func(t *testing.T) {
 			files, err := FindTemplateFiles(tempDir, testCase.ext)
 			if err != nil {
-				t.Fatalf("Failed to find template files: %v", err)
+				t.Fatalf(findTemplateFilesErr, err)
 			}
 			if len(files) != testCase.expectedLen {
 				t.Errorf("Expected %d files, got %d", testCase.expectedLen, len(files))
@@ -632,7 +725,7 @@ func TestConvenienceFunctions(t *testing.T) {
 	t.Run("CompileWithExtension", func(t *testing.T) {
 		// This test just ensures the function can be called without panic
 		// We can't test actual compilation without qtc being available
-		CompileWithExtension(tempDir, ".qtpl")
+		CompileWithExtension(tempDir, qtplExt)
 	})
 
 	t.Run("QtcWrap", func(t *testing.T) {
@@ -679,13 +772,13 @@ func TestHandleQtcError(t *testing.T) {
 			handleQtcError(*stderr, err)
 
 			if err := wFile.Close(); err != nil {
-				t.Fatalf("Failed to close writer: %v", err)
+				t.Fatalf(closeWriterErr, err)
 			}
 			os.Stdout = oldStdout
 
 			// Read the captured output
 			if _, err := buf.ReadFrom(rFile); err != nil {
-				t.Fatalf("Failed to read from pipe: %v", err)
+				t.Fatalf(readFromPipeErr, err)
 			}
 			output := buf.String()
 
@@ -710,11 +803,11 @@ func TestExecuteQtc(t *testing.T) {
 		executeQtc(args)
 
 		if err := wFile.Close(); err != nil {
-			t.Fatalf("Failed to close writer: %v", err)
+			t.Fatalf(closeWriterErr, err)
 		}
 		os.Stdout = oldStdout
 		if _, err := buf.ReadFrom(rFile); err != nil {
-			t.Fatalf("Failed to read from pipe: %v", err)
+			t.Fatalf(readFromPipeErr, err)
 		}
 
 		// The function should handle the error gracefully
@@ -747,39 +840,26 @@ func TestWithConfig(t *testing.T) {
 	})
 }
 
-func TestEdgeCases(t *testing.T) {
-	t.Run("ConfigWithBothFileAndDir", func(t *testing.T) {
-		// Create a temporary directory and file
-		tempDir, err := os.MkdirTemp("", "qtcwrap_test")
-		if err != nil {
-			t.Fatalf(createTempDirErr, err)
-		}
-		defer func() {
-			if err := os.RemoveAll(tempDir); err != nil {
-				t.Fatalf(removeTempDirErr, err)
-			}
-		}()
+func TestConfigPrecedence(t *testing.T) {
+	tempDir := createTempTestDir(t)
+	defer cleanupTempDir(t, tempDir)
+	tempFile := createTempTestFile(t, tempDir, testContent)
 
-		tempFile := filepath.Join(tempDir, testQtplFile)
-		err = os.WriteFile(tempFile, []byte(testContent), 0600)
-		if err != nil {
-			t.Fatalf(createTempFileErr, err)
-		}
+	config := Config{
+		Dir:              tempDir,
+		SkipLineComments: false,
+		Ext:              "",
+		File:             tempFile,
+	}
 
-		config := Config{
-			Dir:              tempDir,
-			SkipLineComments: false,
-			Ext:              "",
-			File:             tempFile,
-		}
+	args := buildArgs(config)
+	// When both are specified, File should take precedence
+	if len(args) != 1 || args[0] != "-file="+tempFile {
+		t.Errorf("Expected File to take precedence over Dir, got args: %v", args)
+	}
+}
 
-		args := buildArgs(config)
-		// When both are specified, File should take precedence
-		if len(args) != 1 || args[0] != "-file="+tempFile {
-			t.Errorf("Expected File to take precedence over Dir, got args: %v", args)
-		}
-	})
-
+func TestExtensionHandling(t *testing.T) {
 	t.Run("EmptyExtension", func(t *testing.T) {
 		config := Config{
 			Dir:              ".",
@@ -802,8 +882,21 @@ func TestEdgeCases(t *testing.T) {
 		}
 	})
 
-	t.Run("ValidateConfigWithNilPointer", func(t *testing.T) {
-		// Test that validation doesn't panic with edge cases
+	t.Run("ValidExtension", func(t *testing.T) {
+		config := Config{
+			Dir:              ".",
+			SkipLineComments: false,
+			Ext:              qtplExt,
+			File:             "",
+		}
+
+		args := buildArgs(config)
+		assertArgsContain(t, args, "-ext=.qtpl")
+	})
+}
+
+func TestConfigValidationEdgeCases(t *testing.T) {
+	t.Run("EmptyConfig", func(t *testing.T) {
 		config := Config{
 			Dir:              "",
 			SkipLineComments: false,
@@ -813,6 +906,22 @@ func TestEdgeCases(t *testing.T) {
 		err := ValidateConfig(config)
 		if err == nil {
 			t.Error("Expected error for empty config")
+		}
+	})
+
+	t.Run("NilSafeValidation", func(t *testing.T) {
+		// Test that validation handles edge cases gracefully
+		config := Config{
+			Dir:              ".",
+			SkipLineComments: true,
+			Ext:              qtplExt,
+			File:             "",
+		}
+
+		// This should not panic
+		err := ValidateConfig(config)
+		if err != nil {
+			t.Errorf("Expected valid config, got error: %v", err)
 		}
 	})
 }
@@ -911,13 +1020,13 @@ func TestLargeDirectoryStructure(t *testing.T) {
 			filename := filepath.Join(tempDir, fmt.Sprintf("test%d.qtpl", i))
 			err = os.WriteFile(filename, []byte(testContent), 0600)
 			if err != nil {
-				t.Fatalf("Failed to create file %s: %v", filename, err)
+				t.Fatalf(createSpecificFileErr, filename, err)
 			}
 		}
 
-		files, err := FindTemplateFiles(tempDir, ".qtpl")
+		files, err := FindTemplateFiles(tempDir, qtplExt)
 		if err != nil {
-			t.Fatalf("Failed to find template files: %v", err)
+			t.Fatalf(findTemplateFilesErr, err)
 		}
 
 		if len(files) != 100 {
