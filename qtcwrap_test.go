@@ -10,6 +10,23 @@ import (
 	"testing"
 )
 
+const (
+	// File and path constants.
+	testQtplFile = "test.qtpl"
+	testContent  = "test content"
+
+	// Command argument constants.
+	dirTemplatesArg = "-dir=templates"
+	extQtplArg      = "-ext=.qtpl"
+	skipCommentsArg = "-skipLineComments"
+
+	// Error message templates.
+	syntaxErrorMsg    = "syntax error in template"
+	createTempDirErr  = "Failed to create temp directory: %v"
+	removeTempDirErr  = "Failed to remove temp directory: %v"
+	createTempFileErr = "Failed to create temp file: %v"
+)
+
 func TestConfig(t *testing.T) {
 	t.Run("DefaultConfig", func(t *testing.T) {
 		config := Config{
@@ -38,7 +55,7 @@ func TestConfig(t *testing.T) {
 			Dir:              "templates",
 			SkipLineComments: false,
 			Ext:              ".qtpl",
-			File:             "test.qtpl",
+			File:             testQtplFile,
 		}
 
 		if config.Dir != "templates" {
@@ -50,7 +67,7 @@ func TestConfig(t *testing.T) {
 		if config.Ext != ".qtpl" {
 			t.Errorf("Expected Ext to be '.qtpl', got '%s'", config.Ext)
 		}
-		if config.File != "test.qtpl" {
+		if config.File != testQtplFile {
 			t.Errorf("Expected File to be 'test.qtpl', got '%s'", config.File)
 		}
 	})
@@ -128,7 +145,7 @@ func TestBuildArgs(t *testing.T) {
 		{
 			name: "FileMode",
 			config: Config{
-				File:             "test.qtpl",
+				File:             testQtplFile,
 				Dir:              "templates",
 				Ext:              ".qtpl",
 				SkipLineComments: false,
@@ -143,7 +160,7 @@ func TestBuildArgs(t *testing.T) {
 				SkipLineComments: false,
 				File:             "",
 			},
-			expected: []string{"-dir=templates", "-ext=.qtpl"},
+			expected: []string{dirTemplatesArg, extQtplArg},
 		},
 		{
 			name: "DirectoryModeWithExt",
@@ -153,7 +170,7 @@ func TestBuildArgs(t *testing.T) {
 				Ext:              ".qtpl",
 				File:             "",
 			},
-			expected: []string{"-dir=templates", "-ext=.qtpl"},
+			expected: []string{dirTemplatesArg, extQtplArg},
 		},
 		{
 			name: "DirectoryModeWithSkipComments",
@@ -163,7 +180,7 @@ func TestBuildArgs(t *testing.T) {
 				Ext:              ".qtpl",
 				File:             "",
 			},
-			expected: []string{"-dir=templates", "-ext=.qtpl", "-skipLineComments"},
+			expected: []string{dirTemplatesArg, extQtplArg, skipCommentsArg},
 		},
 		{
 			name: "FileModeWithSkipComments",
@@ -171,9 +188,9 @@ func TestBuildArgs(t *testing.T) {
 				Dir:              "",
 				SkipLineComments: true,
 				Ext:              "",
-				File:             "test.qtpl",
+				File:             testQtplFile,
 			},
-			expected: []string{"-file=test.qtpl", "-skipLineComments"},
+			expected: []string{"-file=test.qtpl", skipCommentsArg},
 		},
 		{
 			name: "OnlyDir",
@@ -203,7 +220,7 @@ func TestBuildArgs(t *testing.T) {
 				Ext:              "",
 				File:             "",
 			},
-			expected: []string{"-skipLineComments"},
+			expected: []string{skipCommentsArg},
 		},
 		{
 			name: "EmptyConfig",
@@ -261,7 +278,7 @@ func TestIsTemporaryFileWarning(t *testing.T) {
 		},
 		{
 			name:     "ActualError",
-			stderr:   []byte("syntax error in template"),
+			stderr:   []byte(syntaxErrorMsg),
 			expected: false,
 		},
 		{
@@ -305,19 +322,19 @@ func TestValidateConfig(t *testing.T) {
 	// Create a temporary directory for testing
 	tempDir, err := os.MkdirTemp("", "qtcwrap_test")
 	if err != nil {
-		t.Fatalf("Failed to create temp directory: %v", err)
+		t.Fatalf(createTempDirErr, err)
 	}
 	defer func() {
 		if err := os.RemoveAll(tempDir); err != nil {
-			t.Fatalf("Failed to remove temp directory: %v", err)
+			t.Fatalf(removeTempDirErr, err)
 		}
 	}()
 
 	// Create a temporary file for testing
-	tempFile := filepath.Join(tempDir, "test.qtpl")
-	err = os.WriteFile(tempFile, []byte("test content"), 0600)
+	tempFile := filepath.Join(tempDir, testQtplFile)
+	err = os.WriteFile(tempFile, []byte(testContent), 0600)
 	if err != nil {
-		t.Fatalf("Failed to create temp file: %v", err)
+		t.Fatalf(createTempFileErr, err)
 	}
 
 	tests := []struct {
@@ -461,11 +478,11 @@ func TestCompileWithValidation(t *testing.T) {
 	// Create a temporary directory for testing
 	tempDir, err := os.MkdirTemp("", "qtcwrap_test")
 	if err != nil {
-		t.Fatalf("Failed to create temp directory: %v", err)
+		t.Fatalf(createTempDirErr, err)
 	}
 	defer func() {
 		if err := os.RemoveAll(tempDir); err != nil {
-			t.Fatalf("Failed to remove temp directory: %v", err)
+			t.Fatalf(removeTempDirErr, err)
 		}
 	}()
 
@@ -533,11 +550,11 @@ func TestCompileWithValidation(t *testing.T) {
 func TestFindTemplateFiles(t *testing.T) {
 	tempDir, err := os.MkdirTemp("", "qtcwrap_test")
 	if err != nil {
-		t.Fatalf("Failed to create temp directory: %v", err)
+		t.Fatalf(createTempDirErr, err)
 	}
 	defer func() {
 		if err := os.RemoveAll(tempDir); err != nil {
-			t.Fatalf("Failed to remove temp directory: %v", err)
+			t.Fatalf(removeTempDirErr, err)
 		}
 	}()
 
@@ -553,7 +570,7 @@ func TestFindTemplateFiles(t *testing.T) {
 		if err := os.MkdirAll(filepath.Dir(fullPath), 0700); err != nil {
 			t.Fatalf("Failed to create directory for %s: %v", fileName, err)
 		}
-		err = os.WriteFile(fullPath, []byte("test content"), 0600)
+		err = os.WriteFile(fullPath, []byte(testContent), 0600)
 		if err != nil {
 			t.Fatalf("Failed to create file %s: %v", fileName, err)
 		}
@@ -585,19 +602,19 @@ func TestConvenienceFunctions(t *testing.T) {
 	// Create a temporary directory for testing
 	tempDir, err := os.MkdirTemp("", "qtcwrap_test")
 	if err != nil {
-		t.Fatalf("Failed to create temp directory: %v", err)
+		t.Fatalf(createTempDirErr, err)
 	}
 	defer func() {
 		if err := os.RemoveAll(tempDir); err != nil {
-			t.Fatalf("Failed to remove temp directory: %v", err)
+			t.Fatalf(removeTempDirErr, err)
 		}
 	}()
 
 	// Create a temporary file for testing
-	tempFile := filepath.Join(tempDir, "test.qtpl")
-	err = os.WriteFile(tempFile, []byte("test content"), 0600)
+	tempFile := filepath.Join(tempDir, testQtplFile)
+	err = os.WriteFile(tempFile, []byte(testContent), 0600)
 	if err != nil {
-		t.Fatalf("Failed to create temp file: %v", err)
+		t.Fatalf(createTempFileErr, err)
 	}
 
 	t.Run("CompileDirectory", func(t *testing.T) {
@@ -638,8 +655,8 @@ func TestHandleQtcError(t *testing.T) {
 		},
 		{
 			name:           "ActualError",
-			stderr:         "syntax error in template",
-			expectedOutput: "syntax error in template",
+			stderr:         syntaxErrorMsg,
+			expectedOutput: syntaxErrorMsg,
 		},
 		{
 			name:           "EmptyStderr",
@@ -710,11 +727,11 @@ func TestWithConfig(t *testing.T) {
 		// Create a temporary directory for testing
 		tempDir, err := os.MkdirTemp("", "qtcwrap_test")
 		if err != nil {
-			t.Fatalf("Failed to create temp directory: %v", err)
+			t.Fatalf(createTempDirErr, err)
 		}
 		defer func() {
 			if err := os.RemoveAll(tempDir); err != nil {
-				t.Fatalf("Failed to remove temp directory: %v", err)
+				t.Fatalf(removeTempDirErr, err)
 			}
 		}()
 
@@ -735,18 +752,18 @@ func TestEdgeCases(t *testing.T) {
 		// Create a temporary directory and file
 		tempDir, err := os.MkdirTemp("", "qtcwrap_test")
 		if err != nil {
-			t.Fatalf("Failed to create temp directory: %v", err)
+			t.Fatalf(createTempDirErr, err)
 		}
 		defer func() {
 			if err := os.RemoveAll(tempDir); err != nil {
-				t.Fatalf("Failed to remove temp directory: %v", err)
+				t.Fatalf(removeTempDirErr, err)
 			}
 		}()
 
-		tempFile := filepath.Join(tempDir, "test.qtpl")
-		err = os.WriteFile(tempFile, []byte("test content"), 0600)
+		tempFile := filepath.Join(tempDir, testQtplFile)
+		err = os.WriteFile(tempFile, []byte(testContent), 0600)
 		if err != nil {
-			t.Fatalf("Failed to create temp file: %v", err)
+			t.Fatalf(createTempFileErr, err)
 		}
 
 		config := Config{
@@ -804,11 +821,11 @@ func TestFileSystemPermissions(t *testing.T) {
 	t.Run("ReadOnlyDirectory", func(t *testing.T) {
 		tempDir, err := os.MkdirTemp("", "qtcwrap_test")
 		if err != nil {
-			t.Fatalf("Failed to create temp directory: %v", err)
+			t.Fatalf(createTempDirErr, err)
 		}
 		defer func() {
 			if err := os.RemoveAll(tempDir); err != nil {
-				t.Fatalf("Failed to remove temp directory: %v", err)
+				t.Fatalf(removeTempDirErr, err)
 			}
 		}()
 
@@ -843,11 +860,11 @@ func TestConcurrentAccess(t *testing.T) {
 	t.Run("ConcurrentValidation", func(t *testing.T) {
 		tempDir, err := os.MkdirTemp("", "qtcwrap_test")
 		if err != nil {
-			t.Fatalf("Failed to create temp directory: %v", err)
+			t.Fatalf(createTempDirErr, err)
 		}
 		defer func() {
 			if err := os.RemoveAll(tempDir); err != nil {
-				t.Fatalf("Failed to remove temp directory: %v", err)
+				t.Fatalf(removeTempDirErr, err)
 			}
 		}()
 
@@ -881,18 +898,18 @@ func TestLargeDirectoryStructure(t *testing.T) {
 	t.Run("ManyFiles", func(t *testing.T) {
 		tempDir, err := os.MkdirTemp("", "qtcwrap_test")
 		if err != nil {
-			t.Fatalf("Failed to create temp directory: %v", err)
+			t.Fatalf(createTempDirErr, err)
 		}
 		defer func() {
 			if err := os.RemoveAll(tempDir); err != nil {
-				t.Fatalf("Failed to remove temp directory: %v", err)
+				t.Fatalf(removeTempDirErr, err)
 			}
 		}()
 
 		// Create many files
 		for i := 0; i < 100; i++ {
 			filename := filepath.Join(tempDir, fmt.Sprintf("test%d.qtpl", i))
-			err = os.WriteFile(filename, []byte("test content"), 0600)
+			err = os.WriteFile(filename, []byte(testContent), 0600)
 			if err != nil {
 				t.Fatalf("Failed to create file %s: %v", filename, err)
 			}
@@ -913,11 +930,11 @@ func TestSpecialCharacters(t *testing.T) {
 	t.Run("SpecialCharsInPath", func(t *testing.T) {
 		tempDir, err := os.MkdirTemp("", "qtcwrap test with spaces")
 		if err != nil {
-			t.Fatalf("Failed to create temp directory: %v", err)
+			t.Fatalf(createTempDirErr, err)
 		}
 		defer func() {
 			if err := os.RemoveAll(tempDir); err != nil {
-				t.Fatalf("Failed to remove temp directory: %v", err)
+				t.Fatalf(removeTempDirErr, err)
 			}
 		}()
 
@@ -939,11 +956,11 @@ func TestSymlinks(t *testing.T) {
 	t.Run("SymlinkDirectory", func(t *testing.T) {
 		tempDir, err := os.MkdirTemp("", "qtcwrap_test")
 		if err != nil {
-			t.Fatalf("Failed to create temp directory: %v", err)
+			t.Fatalf(createTempDirErr, err)
 		}
 		defer func() {
 			if err := os.RemoveAll(tempDir); err != nil {
-				t.Fatalf("Failed to remove temp directory: %v", err)
+				t.Fatalf(removeTempDirErr, err)
 			}
 		}()
 

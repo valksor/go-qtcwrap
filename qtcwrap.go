@@ -193,6 +193,7 @@ func buildArgs(config Config) []string {
 func executeQtc(args []string) {
 	// Create command with security considerations
 	// #nosec G204 -- args are constructed internally from validated config; safe from injection
+	// nolint:noctx
 	cmd := exec.Command("qtc", args...)
 
 	// Set up output handling
@@ -370,6 +371,7 @@ func GetQtcVersion() (string, error) {
 		return "", err
 	}
 
+	// nolint:noctx
 	cmd := exec.Command("qtc", "-version")
 	output, err := cmd.Output()
 	if err != nil {
