@@ -1,5 +1,7 @@
 # QuickTemplate Wrapper (qtcwrap)
 
+[![codecov](https://codecov.io/gh/valksor/go-qtcwrap/graph/badge.svg?token=5FIAV4SRU1)](https://codecov.io/gh/valksor/go-qtcwrap)
+
 A Go package that provides utilities for working with the QuickTemplate compiler (qtc), simplifying the process of generating Go code from QuickTemplate (.qtpl) files.
 
 ## Features
